@@ -25,8 +25,10 @@ def parse_cookies(raw):
 def get_exchange_games():
     s = requests.Session()
     s.headers.update({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json",
+        "Origin": "https://mexchange.betbra.bet.br",
+        "Referer": "https://mexchange.betbra.bet.br/",
     })
     s.cookies.update(parse_cookies(COOKIES_RAW))
     
@@ -35,11 +37,19 @@ def get_exchange_games():
     url = f"{EXCHANGE_BASE}/events?offset=0&per-page=100&after={agora}&before={daqui_a_3_dias}&sport-ids=15&sort-by=volume&sort-direction=desc"
     
     try:
-        r = s.get(url, timeout=10)
+        r = s.get(url, timeout=15)
+        
+        # 1. Verifica se a requisição foi bloqueada (Erro 403, 502, etc)
         if r.status_code != 200:
-            return {"error": f"API retornou {r.status_code}"}
+            return {"error": f"API bloqueou a requisição (Status {r.status_code}). Atualize os cookies."}
             
-        data = r.json()
+        # 2. Tenta decodificar o JSON com segurança
+        try:
+            data = r.json()
+        except ValueError:
+            # Se cair aqui, a API devolveu HTML (Provável bloqueio do Cloudflare)
+            return {"error": "Cloudflare bloqueou o acesso. É necessário atualizar o cookie cf_clearance."}
+            
         items = data if isinstance(data, list) else data.get("events", [])
         
         jogos_limpos = []
@@ -60,7 +70,6 @@ def get_exchange_games():
                         "lay": min(lays) if lays else "-"
                     })
             
-            # Pega o nome do campeonato das meta-tags
             liga = "Desconhecida"
             for tag in jogo.get("meta-tags", []):
                 if tag.get("type") == "COMPETITION":
@@ -77,8 +86,9 @@ def get_exchange_games():
             })
             
         return {"games": jogos_limpos}
-    except Exception as e:
-        return {"error": str(e)}
+        
+    except requests.exceptions.RequestException as e:
+        return {"error": f"Erro de conexão com a API: {str(e)}"}
 
 @app.get("/api/games")
 def api_games():
