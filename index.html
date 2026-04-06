@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetRadar - Exchange Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        backBlue: '#dbeafe', // Azul clarinho estilo Betfair
+                        backBlueText: '#1e3a8a',
+                        layPink: '#fce7f3', // Rosa clarinho estilo Betfair
+                        layPinkText: '#831843',
+                        darkBg: '#0f172a',
+                        cardBg: '#1e293b'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-darkBg text-slate-200 font-sans min-h-screen selection:bg-blue-500 selection:text-white">
+    <div id="app" class="max-w-6xl mx-auto p-4 md:p-8">
+        
+        <header class="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
+                    <i class="fa-solid fa-bolt mr-2"></i>BetRadar
+                </h1>
+                <p class="text-slate-400 text-sm mt-1">Exchange Market Scanner</p>
+            </div>
+            
+            <div class="relative w-full md:w-96">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-3 text-slate-400"></i>
+                <input 
+                    v-model="searchQuery" 
+                    type="text" 
+                    placeholder="Pesquisar time ou liga..." 
+                    class="w-full bg-slate-800 text-white rounded-lg pl-10 pr-4 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                >
+            </div>
+        </header>
+
+        <div class="flex space-x-1 mb-6 bg-slate-800 p-1 rounded-lg w-fit">
+            <button @click="filter = 'all'" :class="['px-4 py-2 rounded-md font-medium text-sm transition-all', filter === 'all' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white']">
+                Todos os Jogos
+            </button>
+            <button @click="filter = 'live'" :class="['px-4 py-2 rounded-md font-medium text-sm transition-all flex items-center', filter === 'live' ? 'bg-red-600 text-white shadow-lg' : 'text-slate-400 hover:text-white']">
+                <span class="w-2 h-2 rounded-full bg-white mr-2 animate-pulse"></span> Ao Vivo
+            </button>
+            <button @click="filter = 'pre'" :class="['px-4 py-2 rounded-md font-medium text-sm transition-all', filter === 'pre' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white']">
+                Pré-Jogo
+            </button>
+        </div>
+
+        <div v-if="loading" class="flex justify-center items-center py-20">
+            <i class="fa-solid fa-circle-notch fa-spin text-4xl text-blue-500"></i>
+            <span class="ml-3 text-xl text-slate-400">Lendo Mercado...</span>
+        </div>
+
+        <div v-if="error" class="bg-red-900 border border-red-700 text-red-100 px-4 py-3 rounded-lg mb-6">
+            <i class="fa-solid fa-triangle-exclamation mr-2"></i> {{ error }}
+        </div>
+
+        <div v-if="!loading && !error" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            
+            <div v-for="jogo in filteredGames" :key="jogo.id" class="bg-cardBg rounded-xl overflow-hidden border border-slate-700 hover:border-blue-500 transition-colors shadow-lg">
+                <div class="px-5 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider truncate pr-2" :title="jogo.liga">
+                        <i class="fa-solid fa-trophy mr-1 text-yellow-500"></i> {{ jogo.liga }}
+                    </span>
+                    <span v-if="jogo.ao_vivo" class="bg-red-500/20 text-red-400 text-xs font-bold px-2 py-1 rounded border border-red-500/30 flex items-center">
+                        <span class="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5 animate-ping"></span> AO VIVO
+                    </span>
+                    <span v-else class="text-xs font-medium text-emerald-400 flex items-center">
+                        <i class="fa-regular fa-clock mr-1"></i> {{ formatTime(jogo.data) }}
+                    </span>
+                </div>
+
+                <div class="p-5">
+                    <h2 class="text-lg font-bold text-white mb-1 leading-tight">{{ jogo.jogo }}</h2>
+                    <p class="text-xs text-slate-400 mb-5">
+                        <i class="fa-solid fa-money-bill-wave mr-1 text-emerald-500"></i> Vol: R$ {{ jogo.volume.toLocaleString('pt-BR') }}
+                    </p>
+
+                    <div v-if="jogo.odds.length >= 3" class="grid grid-cols-3 gap-2">
+                        <div class="flex flex-col space-y-1">
+                            <span class="text-[10px] text-center text-slate-400 truncate px-1" :title="jogo.odds[0].nome">{{ jogo.odds[0].nome }}</span>
+                            <div class="bg-backBlue text-backBlueText font-bold text-center py-2 rounded shadow-sm">{{ jogo.odds[0].back }}</div>
+                            <div class="bg-layPink text-layPinkText font-bold text-center py-2 rounded shadow-sm">{{ jogo.odds[0].lay }}</div>
+                        </div>
+                        
+                        <div class="flex flex-col space-y-1">
+                            <span class="text-[10px] text-center text-slate-400">Empate</span>
+                            <div class="bg-backBlue text-backBlueText font-bold text-center py-2 rounded shadow-sm">{{ jogo.odds[2].back }}</div>
+                            <div class="bg-layPink text-layPinkText font-bold text-center py-2 rounded shadow-sm">{{ jogo.odds[2].lay }}</div>
+                        </div>
+
+                        <div class="flex flex-col space-y-1">
+                            <span class="text-[10px] text-center text-slate-400 truncate px-1" :title="jogo.odds[1].nome">{{ jogo.odds[1].nome }}</span>
+                            <div class="bg-backBlue text-backBlueText font-bold text-center py-2 rounded shadow-sm">{{ jogo.odds[1].back }}</div>
+                            <div class="bg-layPink text-layPinkText font-bold text-center py-2 rounded shadow-sm">{{ jogo.odds[1].lay }}</div>
+                        </div>
+                    </div>
+                    
+                    <div v-else class="text-center py-4 text-sm text-slate-500 bg-slate-800/50 rounded">
+                        Mercado suspenso ou sem odds.
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="filteredGames.length === 0" class="col-span-full py-12 text-center text-slate-500">
+                <i class="fa-regular fa-folder-open text-4xl mb-3"></i>
+                <p>Nenhum jogo encontrado com esses filtros.</p>
+            </div>
+            
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    games: [],
+                    searchQuery: '',
+                    filter: 'all', // 'all', 'live', 'pre'
+                    loading: true,
+                    error: null
+                }
+            },
+            computed: {
+                filteredGames() {
+                    let result = this.games;
+                    
+                    // Filtro de Texto
+                    if (this.searchQuery) {
+                        const q = this.searchQuery.toLowerCase();
+                        result = result.filter(g => 
+                            g.jogo.toLowerCase().includes(q) || 
+                            g.liga.toLowerCase().includes(q)
+                        );
+                    }
+                    
+                    // Filtro de Status
+                    if (this.filter === 'live') {
+                        result = result.filter(g => g.ao_vivo);
+                    } else if (this.filter === 'pre') {
+                        result = result.filter(g => !g.ao_vivo);
+                    }
+                    
+                    return result;
+                }
+            },
+            methods: {
+                async fetchGames() {
+                    try {
+                        const response = await fetch('/api/games');
+                        const data = await response.json();
+                        
+                        if (data.error) {
+                            this.error = data.error;
+                        } else {
+                            this.games = data.games;
+                        }
+                    } catch (err) {
+                        this.error = "Erro de conexão com o servidor local.";
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                formatTime(dateString) {
+                    const date = new Date(dateString);
+                    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) + ' - ' + date.toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'});
+                }
+            },
+            mounted() {
+                this.fetchGames();
+                // Atualiza os dados a cada 30 segundos
+                setInterval(this.fetchGames, 30000); 
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
